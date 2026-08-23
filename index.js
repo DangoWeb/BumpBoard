@@ -188,6 +188,13 @@ client.on('messageCreate', async msg => {
         db.leaderboard[mentioned.id] = entry;
     });
     saveDB();
+    if (process.env.EMOJI) {
+        try {
+            await msg.react(process.env.EMOJI);
+        } catch (e) {
+            console.warn('Failed to add reaction:', e);
+        };
+    };
 });
 
 client.login(process.env.BOT_TOKEN);
