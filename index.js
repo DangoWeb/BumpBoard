@@ -8,7 +8,12 @@ const DATA_FILE = path.join(__dirname, 'bumpboard.json');
 let db = { user: null, channel: null, leaderboard: {} };
 
 function loadDB() {
-    if (fs.existsSync(DATA_FILE)) db = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+    if (fs.existsSync(DATA_FILE)) {
+        db = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
+        if (db.leaderboard) for (const [uid, val] of Object.entries(db.leaderboard)) {
+            if (typeof val === 'number') db.leaderboard[uid] = { count: val, last: null };
+        };
+    };
 };
 
 function saveDB() {
@@ -91,6 +96,7 @@ client.on('interactionCreate', async interaction => {
         const leaderboard = {};
         let fetchedCount = 0;
         let lastId = null;
+        db.leaderboard = {};
         while (fetchedCount < MAX_MESSAGES) {
             console.log(`Fetching messages... (fetched ${fetchedCount})`);
             const options = { limit: BATCH_SIZE };
@@ -99,9 +105,13 @@ client.on('interactionCreate', async interaction => {
             if (batch.size === 0) break;
             const userMsgs = batch.filter(m => m.author.id === targetUser.id);
             userMsgs.forEach(msg => {
+                const bumpTime = (new Date(msg.createdTimestamp)).toISOString();
                 msg.mentions.users.forEach(mentioned => {
-                    const id = mentioned.id;
-                    leaderboard[id] = (leaderboard[id] || 0) + 1;
+                    const entry = (leaderboard[mentioned.id] && (typeof leaderboard[mentioned.id] === 'object')) ? leaderboard[mentioned.id] : ((db.leaderboard[mentioned.id] && (typeof db.leaderboard[mentioned.id] !== 'object') && Number.isFinite(db.leaderboard[mentioned.id])) ? { count: db.leaderboard[mentioned.id], first: null, last: null } : { count: 0, first: null, last: null });
+                    entry.count += 1;
+                    entry.last = entry.last || bumpTime;
+                    entry.first = bumpTime;
+                    leaderboard[mentioned.id] = entry;
                 });
             });
             fetchedCount += batch.size;
@@ -124,32 +134,38 @@ client.on('interactionCreate', async interaction => {
         };
         await interaction.deferReply({ flags: 64 });
         const activeUsers = await Promise.all(
-            Object.entries(db.leaderboard).map(async ([userId, count]) => {
+            Object.entries(db.leaderboard).map(async ([userId, entry]) => {
                 try {
                     await interaction.guild.members.fetch(userId);
-                    return [userId, count];
+                    const count = (typeof entry === 'number') ? entry : entry.count;
+                    const first = (typeof entry === 'object') ? entry.first : null;
+                    const last = (typeof entry === 'object') ? entry.last : null;
+                    return [userId, { count, first, last }];
                 } catch {
                     return null;
                 };
-            }),
+            })
         );
         const sorted = activeUsers
             .filter(Boolean)
-            .sort((a, b) => b[1] - a[1])
+            .sort((a, b) => b[1].count - a[1].count)
             .slice(0, process.env.TOP ? parseInt(process.env.TOP) : 10);
         if (sorted.length === 0) {
             await interaction.editReply('❌ No leaderboard users are currently in this server.');
             return;
         };
         const embed = new EmbedBuilder()
-            .setTitle(String(`${process.env.EMOJI || ''} BumpBoard`).trim())
+            .setTitle(`${process.env.EMOJI || ''} BumpBoard`.trim())
             .setDescription(`Top ${sorted.length} current server member${(sorted.length === 1) ? '' : 's'}:`)
             .setColor(0x5865F2)
             .setTimestamp();
-        sorted.forEach(([userId, count], idx) => {
+        sorted.forEach(([userId, data], idx) => {
+            const { count, first, last } = data;
+            const firstDateStr = first ? `<t:${Math.floor(new Date(first).getTime() / 1000)}:f>` : '—';
+            const lastDateStr = last ? `<t:${Math.floor(new Date(last).getTime() / 1000)}:f>` : '—';
             embed.addFields({
                 name: `#${idx + 1}`,
-                value: `<@${userId}>: **${count}** bump${count !== 1 ? 's' : ''}`,
+                value: `<@${userId}> • **${count}** bump${(count !== 1) ? 's' : ''}\nFirst: ${firstDateStr}\nLast: ${lastDateStr}`,
                 inline: true,
             });
         });
@@ -162,8 +178,14 @@ client.on('messageCreate', async msg => {
     if (msg.guildId !== process.env.GUILD_ID) return;
     if (msg.channelId !== db.channel) return;
     if (msg.author.id !== db.user) return;
-    Object.keys(msg.mentions.users).forEach(mentioned => {
-        db.leaderboard[mentioned] = (db.leaderboard[mentioned] || 0) + 1;
+    const now = new Date().toISOString();
+    if (!db.leaderboard) db.leaderboard = {};
+    msg.mentions.users.forEach(mentioned => {
+        const entry = (db.leaderboard[mentioned.id] && (typeof db.leaderboard[mentioned.id] === 'object')) ? db.leaderboard[mentioned.id] : ((db.leaderboard[mentioned.id] && (typeof db.leaderboard[mentioned.id] !== 'object') && Number.isFinite(db.leaderboard[mentioned.id])) ? { count: db.leaderboard[mentioned.id], first: null, last: null } : { count: 0, first: null, last: null });
+        entry.count += 1;
+        entry.first = entry.first || now;
+        entry.last = now;
+        db.leaderboard[mentioned.id] = entry;
     });
     saveDB();
 });
