@@ -33,11 +33,11 @@ client.once('clientReady', () => {
 async function registerCommands() {
     const commands = [
         {
-            "name": "bumpboard",
+            "name": "bump",
             "description": "BumpBoard utilities",
             "options": [
                 {
-                    "name": "show",
+                    "name": "board",
                     "description": "Show the current BumpBoard rankings",
                     "type": 1
                 },
@@ -78,7 +78,7 @@ async function registerCommands() {
 
 client.on('interactionCreate', async interaction => {
     if (!interaction.isChatInputCommand()) return;
-    if ((interaction.commandName === 'bumpboard') && (interaction.options.getSubcommand() === 'setup')) {
+    if ((interaction.commandName === 'bump') && (interaction.options.getSubcommand() === 'setup')) {
         if (interaction.user.id !== process.env.SETUP_USER_ID) {
             await interaction.reply({ content: '❌ You are not allowed to run this command.', flags: 64 });
             return;
@@ -117,7 +117,7 @@ client.on('interactionCreate', async interaction => {
             `✅ Leaderboard initialized for <@${targetUser.id}> in <#${channel.id}>. ` +
             `Scanned ${fetchedCount} recent messages and found ${Object.keys(leaderboard).length} mentioned users.`
         );
-    } else if ((interaction.commandName === 'bumpboard') && (interaction.options.getSubcommand() === 'show')) {
+    } else if ((interaction.commandName === 'bump') && (interaction.options.getSubcommand() === 'board')) {
         if (!db.leaderboard || (Object.keys(db.leaderboard).length === 0)) {
             await interaction.reply('❌ No leaderboard data found. Run `/setup` first.');
             return;
@@ -158,12 +158,12 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.on('messageCreate', async msg => {
-    if (msg.author.bot || !msg.guild) return;
-    if (msg.channel.id !== db.channel) return;
+    if (!msg.author || !msg.author.bot || !msg.author.id || !msg.guildId || !msg.mentions || !msg.mentions.users || !msg.mentions.users.length || !process.env.GUILD_ID || !msg.channelId || !db || !db.channel) return;
+    if (msg.guildId !== process.env.GUILD_ID) return;
+    if (msg.channelId !== db.channel) return;
     if (msg.author.id !== db.user) return;
-    msg.mentions.users.forEach(mentioned => {
-        const id = mentioned.id;
-        db.leaderboard[id] = (db.leaderboard[id] || 0) + 1;
+    Object.keys(msg.mentions.users).forEach(mentioned => {
+        db.leaderboard[mentioned] = (db.leaderboard[mentioned] || 0) + 1;
     });
     saveDB();
 });
