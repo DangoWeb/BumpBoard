@@ -174,11 +174,11 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.on('messageCreate', async msg => {
-    if (!msg.author || !msg.author.bot || !msg.author.id || !msg.guildId || !msg.mentions || !msg.mentions.users || !msg.mentions.users.length || !process.env.GUILD_ID || !msg.channelId || !db || !db.channel) return;
+    if (!msg || !msg.authorId || !msg.guildId || !msg.mentions || !msg.mentions.users || !msg.mentions.users.length || !process.env.GUILD_ID || !msg.channelId || !db || !db.channel) return;
     if (msg.guildId !== process.env.GUILD_ID) return;
     if (msg.channelId !== db.channel) return;
-    if (msg.author.id !== db.user) return;
-    const now = new Date().toISOString();
+    if (msg.authorId !== db.user) return;
+    const now = (new Date(msg.createdTimestamp)).toISOString();
     if (!db.leaderboard) db.leaderboard = {};
     msg.mentions.users.forEach(mentioned => {
         const entry = (db.leaderboard[mentioned.id] && (typeof db.leaderboard[mentioned.id] === 'object')) ? db.leaderboard[mentioned.id] : ((db.leaderboard[mentioned.id] && (typeof db.leaderboard[mentioned.id] !== 'object') && Number.isFinite(db.leaderboard[mentioned.id])) ? { count: db.leaderboard[mentioned.id], first: null, last: null } : { count: 0, first: null, last: null });
