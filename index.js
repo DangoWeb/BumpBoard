@@ -174,10 +174,10 @@ client.on('interactionCreate', async interaction => {
 });
 
 client.on('messageCreate', async msg => {
-    if (!msg || !msg.authorId || !msg.guildId || !msg.mentions || !msg.mentions.users || !msg.mentions.users.length || !process.env.GUILD_ID || !msg.channelId || !db || !db.channel) return;
+    if (!msg || !msg.author.id || !msg.guildId || !msg.channelId || !msg.mentions || !msg.mentions.users || !msg.mentions.users.size || !process.env.GUILD_ID || !db || !db.channel || !db.user) return;
     if (msg.guildId !== process.env.GUILD_ID) return;
     if (msg.channelId !== db.channel) return;
-    if (msg.authorId !== db.user) return;
+    if (msg.author.id !== db.user) return;
     const now = (new Date(msg.createdTimestamp)).toISOString();
     if (!db.leaderboard) db.leaderboard = {};
     msg.mentions.users.forEach(mentioned => {
