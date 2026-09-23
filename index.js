@@ -220,7 +220,7 @@ client.on('messageCreate', async msg => {
         };
     };
     const bumpCount = msg.mentions.users.map(mentioned => (db.leaderboard[mentioned.id] && db.leaderboard[mentioned.id].count) || 0).reduce((a, b) => a + b, 0);
-    const replyText = `🔼 ${msg.mentions.users.map(u => `<@${u.id}>`).join(', ')}'s total bump are now: **${bumpCount}**`;
+    const replyText = `🔼 ${msg.mentions.users.map(u => `<@${u.id}>`).join(', ')}'s total bumps are now: **${bumpCount}**`;
     await msg.reply(replyText);
     if (bumpCount % 100 === 0) {
         const sentMsg = await msg.channel.messages.fetch({ limit: 1 }).then(messages => messages.first());
