@@ -12,6 +12,7 @@ function loadDB() {
         db = JSON.parse(fs.readFileSync(DATA_FILE, 'utf8'));
         if (db.leaderboard) for (const [uid, val] of Object.entries(db.leaderboard)) {
             if (typeof val === 'number') db.leaderboard[uid] = { count: val, last: null };
+            if ((typeof db.leaderboard[uid] === 'object') && (db.leaderboard[uid] !== null) && (typeof db.leaderboard[uid].inServer === 'undefined')) db.leaderboard[uid].inServer = null;
         };
     };
 };
@@ -43,7 +44,7 @@ async function registerCommands() {
             "options": [
                 {
                     "name": "board",
-                    "description": "Show the current BumpBoard rankings",
+                    "description": "Show the current BumpBoard leaderboard rankings",
                     "type": 1
                 },
                 {
@@ -107,7 +108,7 @@ client.on('interactionCreate', async interaction => {
             userMsgs.forEach(msg => {
                 const bumpTime = (new Date(msg.createdTimestamp)).toISOString();
                 msg.mentions.users.forEach(mentioned => {
-                    const entry = (leaderboard[mentioned.id] && (typeof leaderboard[mentioned.id] === 'object')) ? leaderboard[mentioned.id] : ((db.leaderboard[mentioned.id] && (typeof db.leaderboard[mentioned.id] !== 'object') && Number.isFinite(db.leaderboard[mentioned.id])) ? { count: db.leaderboard[mentioned.id], first: null, last: null } : { count: 0, first: null, last: null });
+                    const entry = (leaderboard[mentioned.id] && (typeof leaderboard[mentioned.id] === 'object')) ? leaderboard[mentioned.id] : ((db.leaderboard[mentioned.id] && (typeof db.leaderboard[mentioned.id] !== 'object') && Number.isFinite(db.leaderboard[mentioned.id])) ? { count: db.leaderboard[mentioned.id], first: null, last: null, inServer: null } : { count: 0, first: null, last: null, inServer: null });
                     entry.count += 1;
                     entry.last = entry.last || bumpTime;
                     entry.first = bumpTime;
@@ -132,26 +133,45 @@ client.on('interactionCreate', async interaction => {
             await interaction.reply('❌ No leaderboard data found. Run `/setup` first.');
             return;
         };
-        await interaction.deferReply({ flags: 64 });
-        const activeUsers = await Promise.all(
-            Object.entries(db.leaderboard).map(async ([userId, entry]) => {
-                try {
-                    await interaction.guild.members.fetch(userId);
-                    const count = (typeof entry === 'number') ? entry : entry.count;
-                    const first = (typeof entry === 'object') ? entry.first : null;
-                    const last = (typeof entry === 'object') ? entry.last : null;
-                    return [userId, { count, first, last }];
-                } catch {
-                    return null;
-                };
-            })
-        );
+        var isAwait = false;
+        if (Object.entries(db.leaderboard).every(([userId, entry]) => !entry.inServer)) isAwait = true;
+        if (isAwait) await interaction.deferReply({ flags: 64 });
+        var activeUsers = [];
+        if (Object.entries(db.leaderboard).every(([userId, entry]) => !entry.inServer)) {
+            activeUsers = await Promise.all(
+                Object.entries(db.leaderboard).map(async ([userId, entry]) => {
+                    var result = null;
+                    try {
+                        await interaction.guild.members.fetch(userId);
+                        const count = (typeof entry === 'number') ? entry : entry.count;
+                        const first = (typeof entry === 'object') ? entry.first : null;
+                        const last = (typeof entry === 'object') ? entry.last : null;
+                        result = [userId, { count, first, last }];
+                    } catch { };
+                    db.leaderboard[userId].inServer = !!result;
+                    return result;
+                })
+            );
+            saveDB();
+        } else {
+            activeUsers = Object.entries(db.leaderboard).map(([userId, entry]) => {
+                if (!entry.inServer) return null;
+                const count = (typeof entry === 'number') ? entry : entry.count;
+                const first = (typeof entry === 'object') ? entry.first : null;
+                const last = (typeof entry === 'object') ? entry.last : null;
+                return [userId, { count, first, last }];
+            });
+        };
         const sorted = activeUsers
             .filter(Boolean)
             .sort((a, b) => b[1].count - a[1].count)
             .slice(0, process.env.TOP ? parseInt(process.env.TOP) : 10);
         if (sorted.length === 0) {
-            await interaction.editReply('❌ No leaderboard users are currently in this server.');
+            if (isAwait) {
+                await interaction.editReply('❌ No leaderboard users are currently in this server.');
+            } else {
+                await interaction.reply('❌ No leaderboard users are currently in this server.');
+            };
             return;
         };
         const embed = new EmbedBuilder()
@@ -169,7 +189,11 @@ client.on('interactionCreate', async interaction => {
                 inline: true,
             });
         });
-        await interaction.editReply({ embeds: [embed] });
+        if (isAwait) {
+            await interaction.editReply({ embeds: [embed] });
+        } else {
+            await interaction.reply({ embeds: [embed], flags: 64 });
+        };
     };
 });
 
@@ -181,7 +205,7 @@ client.on('messageCreate', async msg => {
     const now = (new Date(msg.createdTimestamp)).toISOString();
     if (!db.leaderboard) db.leaderboard = {};
     msg.mentions.users.forEach(mentioned => {
-        const entry = (db.leaderboard[mentioned.id] && (typeof db.leaderboard[mentioned.id] === 'object')) ? db.leaderboard[mentioned.id] : ((db.leaderboard[mentioned.id] && (typeof db.leaderboard[mentioned.id] !== 'object') && Number.isFinite(db.leaderboard[mentioned.id])) ? { count: db.leaderboard[mentioned.id], first: null, last: null } : { count: 0, first: null, last: null });
+        const entry = (db.leaderboard[mentioned.id] && (typeof db.leaderboard[mentioned.id] === 'object')) ? db.leaderboard[mentioned.id] : ((db.leaderboard[mentioned.id] && (typeof db.leaderboard[mentioned.id] !== 'object') && Number.isFinite(db.leaderboard[mentioned.id])) ? { count: db.leaderboard[mentioned.id], first: null, last: null, inServer: null } : { count: 0, first: null, last: null, inServer: null });
         entry.count += 1;
         entry.first = entry.first || now;
         entry.last = now;
@@ -194,6 +218,20 @@ client.on('messageCreate', async msg => {
         } catch (e) {
             console.warn('Failed to add reaction:', e);
         };
+    };
+});
+
+client.on('guildMemberAdd', member => {
+    if (db.leaderboard && db.leaderboard[member.id]) {
+        db.leaderboard[member.id].inServer = true;
+        saveDB();
+    };
+});
+
+client.on('guildMemberRemove', member => {
+    if (db.leaderboard && db.leaderboard[member.id]) {
+        db.leaderboard[member.id].inServer = false;
+        saveDB();
     };
 });
 
