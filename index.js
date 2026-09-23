@@ -190,9 +190,9 @@ client.on('interactionCreate', async interaction => {
             });
         });
         if (isAwait) {
-            await interaction.editReply({ embeds: [embed] });
+            await interaction.editReply({ embeds: [embed], flags: 64 });
         } else {
-            await interaction.reply({ embeds: [embed], flags: 64 });
+            await interaction.reply({ embeds: [embed] });
         };
     };
 });
